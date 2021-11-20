@@ -1,2 +1,2 @@
 # py-c-preprocessor
-A preprocessor for C files written in C.
+A preprocessor for C files written in python
