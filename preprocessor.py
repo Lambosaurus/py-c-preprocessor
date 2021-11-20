@@ -2,7 +2,14 @@
 import re
 import os.path
 
-class PreprocessorRule():
+IF_STATE_NOW  = 0
+IF_STATE_SEEK = 1
+IF_STATE_SKIP = 2
+
+MACRO_SEARCH_REGEX = re.compile(r"(\w+)\s*(\([^\)]*\))?")
+TOKEN_SEARCH_REGEX = re.compile(r"(\w+)")
+
+class Directive():
     def __init__(self, pattern, action, always_parse = False):
         self.pattern = re.compile(pattern)
         self.action = action
@@ -16,10 +23,36 @@ class PreprocessorRule():
                 return True
         return False
 
+class Macro():
+    def __init__(self, token, expr, args = None):
+        self.token = token
+        self.expr = expr
+        self.args = args
+    
+    def __repr__(self):
+        if self.args:
+            return "{}({}): {}".format(self.token, self.args, self.expr)
+        return "{}: {}".format(self.token, self.expr)
 
-IF_STATE_NOW  = 0
-IF_STATE_SEEK = 1
-IF_STATE_SKIP = 2
+    # Expands the macros to its full expression
+    def expand(self, args = None):
+        if args:
+            return self._substitute_args(self.expr, args)
+        return self.expr
+
+    # Substitutes any defined arguments in the expression
+    # This must be done in a single pass, so that nested tokens are left in place
+    def _substitute_args(self, expr, args):
+        # Create a map between the argument name and the value
+        tokens = { self.args[i]: args[i] for i in range(len(args)) }
+        def _substitute_token(match):
+            token = match.groups()[0]
+            if token in tokens:
+                return tokens[token]
+            else:
+                return token
+        return TOKEN_SEARCH_REGEX.sub(_substitute_token, expr)
+
 
 class Preprocessor():
 
@@ -29,29 +62,27 @@ class Preprocessor():
 
     def __init__(self):
         self.macros = {}
-        self.varidic_macros = {}
 
-        self.rules = [
+        self.directives = [
             # Conditional tokens
-            PreprocessorRule(r"^#if\s+([^\r\n]*)", self._rule_if, True),
-            PreprocessorRule(r"^#ifdef\s+(\w+)", self._rule_ifdef, True),
-            PreprocessorRule(r"^#ifndef\s+(\w+)", self._rule_ifndef, True),
-            PreprocessorRule(r"^#elif\s+([^\r\n]*)", self._rule_elif, True),
-            PreprocessorRule(r"^#endif", self._rule_endif, True),
-            PreprocessorRule(r"^#else", self._rule_else, True),
-
+            Directive(r"#if\s+(.*)", self._directive_if, True),
+            Directive(r"#ifdef\s+(\w+)", self._directive_ifdef, True),
+            Directive(r"#ifndef\s+(\w+)", self._directive_ifndef, True),
+            Directive(r"#elif\s+(.*)", self._directive_elif, True),
+            Directive(r"#endif", self._directive_endif, True),
+            Directive(r"#else", self._directive_else, True),
 
             # Standalone tokens
-            PreprocessorRule(r"^#pragma\s+([^\r\n]*)", self._rule_pragma),
-            PreprocessorRule(r"^#error\s+([^\r\n]*)", self._rule_error),
-            PreprocessorRule(r"^#include\s+\"([^\"]*)\"", self._rule_include),
-            PreprocessorRule(r"^#include\s+<([^>]*)>", self._rule_include),
-            PreprocessorRule(r"^#undef\s+(\w+)", self._rule_undef),
+            Directive(r"#pragma\s+(.*)", self._directive_pragma),
+            Directive(r"#error\s+(.*)", self._directive_error),
+            Directive(r"#include\s*\"([^\"]*)\"", self._directive_include),
+            Directive(r"#include\s*<([^>]*)>", self._directive_include),
+            Directive(r"#undef\s+(\w+)", self._directive_undef),
             
             # Define statements. Order is important.
-            PreprocessorRule(r"^#define\s+(\w+)\s*\(([^\)]*)\)\s+([^\r\n]*)", self._rule_define),
-            PreprocessorRule(r"^#define\s+(\w+)\s+([^\r\n]*)", self._rule_define),
-            PreprocessorRule(r"^#define\s+(\w+)", self._rule_define),
+            Directive(r"#define\s+(\w+)\(([^\)]*)\)\s*(.*)?", self._directive_define_varidic),
+            Directive(r"#define\s+(\w+)\s*(.*)?", self._directive_define),
+            
         ]
 
         self._content_enabled = IF_STATE_NOW
@@ -64,6 +95,11 @@ class Preprocessor():
         self.ignore_missing_includes = False
 
         self._local_path = ""
+        self.max_macro_expansion_depth = 4096
+
+        # special macro required to make the define statement work
+        self._defined_macro = Macro("defined", "?", ["token"])
+        self._defined_macro.expand = lambda args: "1" if self.is_defined(args[0]) else "0"
 
     #
     #      PUBLIC INTERFACE
@@ -80,20 +116,17 @@ class Preprocessor():
         return "\n".join(self.source_lines)
 
     # Defines a symbol
-    def define(self, key, value = "", args = None):
-        if args:
-            self.varidic_macros[key] = (args, value)
-        else:
-            self.macros[key] = value
+    def define(self, token, expr = "", args = None):
+        self.macros[token] = Macro(token, expr, args)
     
     # Undefines a symbol
-    def undefine(self, key):
-        if key in self.macros:
-            del self.macros[key]
+    def undefine(self, token):
+        if token in self.macros:
+            del self.macros[token]
 
     # returns true if a preprocessor symbol is defined
-    def is_defined(self, key):
-        return key in self.macros
+    def is_defined(self, token):
+        return token in self.macros
 
     def evaluate(self, expr):
         return self._evaluate_expression(expr)
@@ -131,6 +164,9 @@ class Preprocessor():
             raise Exception("unterminated comment found")
 
         self._restore_local_path(prior_local)
+
+    def expand(self, expr):
+        return self._expand_macros(expr, 0)
 
     #
     #     LINE PARSING
@@ -180,13 +216,16 @@ class Preprocessor():
         line = line.strip()
         if line:
             enabled = self._flow_enabled()
-            for rule in self.rules:
-                if rule.invoke(line, enabled):
-                    break
+
+            if line.startswith('#'):
+                # this is a preprocessor line
+                for directive in self.directives:
+                    if directive.invoke(line, enabled):
+                        break
             else:
                 if enabled:
                     # Didnt match a preprocessor line - its source.
-                    line = self._expand_macros(line)
+                    line = self.expand(line)
                     self.source_lines.append(line)
 
     #
@@ -223,113 +262,153 @@ class Preprocessor():
         self.include_paths.append(os.path.normpath(path))
 
     #
-    #      PREPROCESSOR DIRECTIVE RULES
+    #      PREPROCESSOR DIRECTIVES
     #
 
-    # Rule to handle: #define <token> OR #define <token> <any> OR  #define <token>(<any>) <any>
-    def _rule_define(self, args):
-        if len(args) == 1:
-            self.define(args[0])
-        elif len(args) == 2:
+    # Rule to handle: #define <token> [<expression>]
+    def _directive_define(self, args):
+        if len(args) == 2:
             self.define(args[0], args[1])
-        elif len(args) == 3:
-            varargs = [ a.strip() for a in args[1].split(",") ]
+        else:
+            self.define(args[0])
+
+    # Rule to handle: #define <token>(<any>) [<expression>]
+    def _directive_define_varidic(self, args):
+        varargs = [ a.strip() for a in args[1].split(",") ]
+        if len(args) == 3:
             self.define(args[0], args[2], varargs)
+        else:
+            self.define(args[0], args=varargs)
 
     # Rule to handle: #if <expression>
-    def _rule_if(self, args):
+    def _directive_if(self, args):
         self._flow_enter_if(self._test_expression(args[0]))
 
     # Rule to handle: #ifdef <token>
-    def _rule_ifdef(self, args):
+    def _directive_ifdef(self, args):
         self._flow_enter_if(self.is_defined(args[0]))
 
     # Rule to handle: #ifndef <token>
-    def _rule_ifndef(self, args):
+    def _directive_ifndef(self, args):
         self._flow_enter_if(not self.is_defined(args[0]))
 
     # Rule to handle: #else
-    def _rule_else(self, args):
+    def _directive_else(self, args):
         self._flow_else_if(True)
 
     # Rule to handle: #elif <expression>
-    def _rule_elif(self, args):
+    def _directive_elif(self, args):
         self._flow_else_if(self._test_expression(args[0]))
 
     # Rule to handle: #endif
-    def _rule_endif(self, args):
+    def _directive_endif(self, args):
         self._flow_exit_if()
 
     # Rule to handle: #include <file> OR #include "file"
-    def _rule_include(self, args):
+    def _directive_include(self, args):
         fname = args[0]
         if self.include_rule(fname):
             self.include(fname, self.ignore_missing_includes)
 
     # Rule to handle: #error <any>
-    def _rule_error(self, args):
+    def _directive_error(self, args):
         raise Exception("#error {0}".format(args[0]))
 
     # Rule to handle: #undef <token>
-    def _rule_undef(self, args):
+    def _directive_undef(self, args):
         self.undefine(args[0])
 
     # Rule to handle: #pragma <any>
-    def _rule_pragma(self, args):
-        match = re.match(r"^python\s+\"([^\"]*)\"", args[0])
+    def _directive_pragma(self, args):
+        match = re.match(r"python\s+\"([^\"]*)\"", args[0])
         if match:
             expr = match.groups()[0]
             eval(expr)
     
+
+    #
+    #     MACRO EXPANSION
+    #
+
+    def _expand_macros(self, expr, recurse_depth):
+        if recurse_depth > self.max_macro_expansion_depth:
+            raise Exception("Max macro expansion depth exceeded")
+
+        # expand macros
+        start = 0
+        while True:
+            # find a token with optional arguments
+            match = MACRO_SEARCH_REGEX.search(expr, start)
+            if not match:
+                break
+            
+            start = match.start()
+            groups = match.groups()
+            token = groups[0]
+
+            if token in self.macros:
+                # expand the macro
+                macro = self.macros[token]
+                if macro.args != None:
+
+                    if len(groups) < 2:
+                        raise Exception("Macro {0} requires arguments".format(token))
+
+                    # expand the macro with the arguments
+                    args = groups[1][1:-1].split(",")
+                    args = [ a.strip() for a in args ]
+
+                    if len(args) != len(macro.args):
+                        raise Exception("Macro {0} requires {1} arguments".format(token, len(macro.args)))
+                    
+                    # replace the macro with the expanded expression
+                    macro_expr = macro.expand(args)
+                    match_len = len(match.group(0))
+                else:
+                    # expand the macro without arguments
+                    macro_expr = macro.expand()
+                    match_len = len(token) # only token is consumed
+                
+                # recusively expand the macro
+                macro_expr = self._expand_macros(macro_expr, recurse_depth + 1)
+                # replace the macro with the expanded expression
+                expr = expr[:start] + macro_expr + expr[start + match_len:]
+                start += len(macro_expr)
+            else:
+                start += len(token)
+
+        return expr
+
     #
     #     EXPRESSION EVALUATION
     #
 
-    # Expands any macros in an expression
-    def _expand_macros(self, expr):
-        return expr
-    
-    # evaluates an expression down to its components. Non trivial.
+    # Evaluates an expression
     def _evaluate_expression(self, expr):
 
-        # Should first prioritise by brackets and operators.
-        match = re.match(r"(\w+)\s*\(([^)]+)\)", expr)
-        if match:
-            function, args = match.groups()
-            return self._evaluate_function(function, [arg.strip() for arg in args.split(',')])
+        self.macros["defined"] = self._defined_macro
+        expr = self.expand(expr)
+        del self.macros["defined"]
 
-        return self._evaluate_token(expr)
+        # convert to python expression (this may be very dangerous)
+        expr = expr.replace("&&", " and ")
+        expr = expr.replace("||", " or ")
+        expr = expr.replace("/", "//")
+        re.sub(r"!([^?==])", r" not \1", expr)
+        
+        result = eval(expr)
+        
+        return result
 
-    def _evaluate_function(self, function, args):
-        if function == "defined":
-            if len(args) != 1:
-                return False
-            return self.is_defined(args[0])
-        # handle varidic macros here.
-        return False
-
-    def _evaluate_token(self, token):
-        if token[0].isdigit():
-            if token.startswith("0x"):
-                return int(token[2:], 16)
-            if token.startswith("0b"):
-                return int(token[2:], 2)
-            if token.startswith("0"):
-                return int(token[1:], 8)
-            else:
-                return int(token, 10)
-
-        if token in self.macros:
-            return self._evaluate_expression(self.macros[token])
-
-        return token
-
-    # For testing expressions found in macros
+    # Tests an expression for truth.
     def _test_expression(self, expr):
-        result = self._evaluate_expression(expr)
-        if type(result) is str:
+        try:
+            result = self._evaluate_expression(expr)
+            if type(result) is str:
+                return False
+            return bool(result)
+        except:
             return False
-        return bool(result)
 
     #
     #     FLOW EVALUATION

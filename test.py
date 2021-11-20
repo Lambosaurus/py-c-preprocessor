@@ -1,7 +1,7 @@
 import os.path
 from preprocessor import Preprocessor
 
-#LIB_ROOT = "../../Lib"
+
 LIB_ROOT = "c:/dev/STM32X/Lib"
 
 
@@ -21,9 +21,14 @@ if __name__ == "__main__":
     parser = Preprocessor()
     parser.ignore_missing_includes = True
     parser.add_include_path( os.path.join(LIB_ROOT,"usb") )
-    parser.define("USB_CLASS_MSC")
+    parser.define("USB_CLASS_CDC")
     parser.include("USB_Class.h")
-    print(parser.varidic_macros)
-    #print(parser.source())
+
+    #parser.define("NESTED_MACRO", "WIERD_MACRO(0,0,0,0)")
+    #parser.define("WIERD_MACRO", "(a,b,c,d)", ['a', 'b', 'c', 'd'])
+    #print(parser.expand("USB_CLASS_INIT('yo dawg') + WIERD_MACRO(4,3,2,1) + NESTED_MACRO"))
+
+    #print(parser.varidic_macros)
+    print(parser.source())
     #print(parser.evaluate("USB_INTERFACES"))
 
