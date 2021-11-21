@@ -7,8 +7,8 @@ IF_STATE_NOW  = 0
 IF_STATE_SEEK = 1
 IF_STATE_SKIP = 2
 
-MACRO_SEARCH_REGEX = re.compile(r"(\w+)\s*(\([^\)]*\))?")
 TOKEN_SEARCH_REGEX = re.compile(r"(\w+)")
+PAREN_SEARCH_REGEX = re.compile(r"\s*\(")
 
 class Directive():
     def __init__(self, pattern, action, always_parse = False):
@@ -347,6 +347,31 @@ class Preprocessor():
     #     MACRO EXPANSION
     #
 
+    # Looks for a closed pair of parentheses in the line.
+    # If found, returns the index of the first character after the pair.
+    # If not found, returns -1.
+    def _find_parentheses_close(self, line, start):
+        # find the matching parenthesis
+        depth = 1
+        for i in range(start+1, len(line)):
+            if line[i] == '(':
+                depth += 1
+            elif line[i] == ')':
+                depth -= 1
+            if depth == 0:
+                return i + 1
+        return None
+
+    # Finds the arguments (<any>), taking care to skip 
+    def _find_arguments(self, line, start):
+        match = PAREN_SEARCH_REGEX.match(line, start)
+        if match:
+            start = match.end() - 1
+            end = self._find_parentheses_close(line, start)
+            return start, end
+        return None, None
+
+    # Expands all macros in the given expression
     def _expand_macros(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:
             raise Exception("Max macro expansion depth exceeded")
@@ -355,24 +380,25 @@ class Preprocessor():
         start = 0
         while True:
             # find a token with optional arguments
-            match = MACRO_SEARCH_REGEX.search(expr, start)
+            match = TOKEN_SEARCH_REGEX.search(expr, start)
             if not match:
                 break
             
             start = match.start()
-            groups = match.groups()
-            token = groups[0]
+            token = match.groups()[0]
 
             if token in self.macros:
                 # expand the macro
                 macro = self.macros[token]
                 if macro.args != None:
 
-                    if groups[1] == None:
-                        raise Exception("Macro {0} requires arguments".format(token))
+                    # find the arguments
+                    arg_start, arg_end = self._find_arguments(expr, match.end())
+                    if arg_end == None:
+                        raise Exception("Macro {0} expects arguments".format(token))
 
-                    # expand the macro with the arguments
-                    args = groups[1][1:-1].split(",")
+                    # separate the arguments
+                    args = expr[arg_start+1:arg_end-1].split(",")
                     args = [ a.strip() for a in args ]
 
                     if len(args) != len(macro.args):
@@ -380,16 +406,16 @@ class Preprocessor():
                     
                     # replace the macro with the expanded expression
                     macro_expr = macro.expand(args)
-                    match_len = len(match.group(0))
+                    end = arg_end
                 else:
                     # expand the macro without arguments
                     macro_expr = macro.expand()
-                    match_len = len(token) # only token is consumed
+                    end = start + len(token) # only token is consumed
                 
                 # recusively expand the macro
                 macro_expr = self._expand_macros(macro_expr, recurse_depth + 1)
                 # replace the macro with the expanded expression
-                expr = expr[:start] + macro_expr + expr[start + match_len:]
+                expr = expr[:start] + macro_expr + expr[end:]
                 start += len(macro_expr)
             else:
                 start += len(token)
