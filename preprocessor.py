@@ -347,30 +347,42 @@ class Preprocessor():
     #     MACRO EXPANSION
     #
 
+    # Scans for the end of a string
+    def _find_string_end(self, line, pos, endchar):
+        while pos < len(line):
+            if line[pos] == endchar:
+                return pos
+            pos += 1
+        raise Exception("Unterminated string")
+
     # Looks for a closed pair of parentheses in the line.
     # If found, returns the index of the first character after the pair.
     # If not found, returns -1.
     def _find_parentheses_close(self, line, start):
         # find the matching parenthesis
         depth = 1
-        for i in range(start+1, len(line)):
+        i = start
+        while i < len(line):
             if line[i] == '(':
                 depth += 1
             elif line[i] == ')':
                 depth -= 1
-            if depth == 0:
-                return i + 1
+                if depth == 0:
+                    return i + 1
+            elif line[i] in "'\"":
+                i = self._find_string_end(line, i+1, line[i])
+            i += 1
         return None
 
     # Finds the arguments (<any>), taking care to skip 
     def _find_arguments(self, line, start):
         match = PAREN_SEARCH_REGEX.match(line, start)
         if match:
-            start = match.end() - 1
+            start = match.end()
             end = self._find_parentheses_close(line, start)
-            return start, end
+            return start-1, end
         return None, None
-
+    
     # Expands all macros in the given expression
     def _expand_macros(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:

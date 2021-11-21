@@ -75,6 +75,7 @@ def test_include():
 def test_embedded_macros():
     p = Preprocessor()
 
+    p.define("MACRO_CONST", "0x1")
     p.define("MACRO_A", "(a + b)", ["a","b"])
     p.define("MACRO_B", "(a + 1)", ["a"])
 
@@ -82,13 +83,17 @@ def test_embedded_macros():
     test_assert(p.evaluate("MACRO_A(1,MACRO_B(2))"), 4)
 
     # check alternate spacing
-    test_assert(p.evaluate("MACRO_A ( 1, MACRO_B( 2 ) )"), 4)
+    test_assert(p.evaluate("MACRO_A ( 1, MACRO_CONST )"), 2)
 
     # try other orientation
     test_assert(p.evaluate("MACRO_A(MACRO_B( 2 ), 1)"), 4)
 
     # check for macro expansion in strings
-    test_assert(p.evaluate("\"MACRO_A(1,MACRO_B(2))\""), "MACRO_A(1,MACRO_B(2))")
+    # Note, this is incorrect logic for C string gluing, but it is a good test
+    test_assert(p.evaluate('MACRO_A("TEXT ","MACRO_CONST")'), "TEXT MACRO_CONST")
+
+    # check for macro expansion in strings
+    test_assert(p.evaluate('"MACRO_A(1,MACRO_B(2))"'), "MACRO_A(1,MACRO_B(2))")
 
 # Real world test cases using the USB MSC example
 def test_usb_class_msc():
