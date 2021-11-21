@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.abspath('./'))
 from preprocessor import Preprocessor
 
-SRC_PATH = "examples/test_src"
+SRC_PATH = "tests/test_src"
 
 def test_assert(expr, expected):
     if expr != expected:
@@ -89,7 +89,6 @@ def test_embedded_macros():
 
     # check for macro expansion in strings
     test_assert(p.evaluate("\"MACRO_A(1,MACRO_B(2))\""), "MACRO_A(1,MACRO_B(2))")
-
 
 # Real world test cases using the USB MSC example
 def test_usb_class_msc():
