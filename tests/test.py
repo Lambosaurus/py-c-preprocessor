@@ -119,6 +119,14 @@ def test_usb_class_cdc():
     test_assert(p.expand("USB_CLASS_DEVICE_DESCRIPTOR"), "cUSB_CDC_ConfigDescriptor")
     test_assert(p.expand("USB_CLASS_INIT(0)"), "USB_CDC_Init(0)")
 
+# Include a source file with a lot of source
+def test_include_source():
+    p = Preprocessor()
+    p.ignore_missing_includes = True
+    p.add_include_path(SRC_PATH)
+
+    p.include("usb/cdc/USB_CDC.c")
+    p.source()
 
 def run_tests():
     test_macro_evaluation()
@@ -127,6 +135,7 @@ def run_tests():
     test_embedded_macros()
     test_usb_class_msc()
     test_usb_class_cdc()
+    test_include_source()
 
 if __name__ == "__main__":
     run_tests()
