@@ -49,9 +49,12 @@ def test_expression_evaluation():
     p.define("USB_CLASS_CDC")
     p.include("usb/cdc/USB_CDC.c")
 
-    # Test that the macro is expanded and evaluated
+    # test that evaluation works
+    test_assert(p.evaluate("(3 + 4) / 2"), 3)
+    
+    # Test that the macro expansion and evaluation works
     test_assert(p.evaluate("CDC_BFR_WRAP(CDC_BFR_SIZE + 23)"), 23)
-
+    
     print(p.source())
 
 

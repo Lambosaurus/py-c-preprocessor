@@ -1,6 +1,7 @@
 
 import re
 import os.path
+import io
 
 IF_STATE_NOW  = 0
 IF_STATE_SEEK = 1
@@ -100,8 +101,6 @@ class Preprocessor():
         self.max_macro_expansion_depth = 4096
         self.expand_source = True
 
-
-
     #
     #      PUBLIC INTERFACE
     #
@@ -114,7 +113,7 @@ class Preprocessor():
 
     # returns the output source file as a string
     def source(self):
-        return "\n".join(self.source_lines)
+        return "".join(self.source_lines)
 
     # Defines a symbol
     def define(self, token, expr = None, args = None):
@@ -133,15 +132,37 @@ class Preprocessor():
         return self._evaluate_expression(expr)
 
     # Consumes a file and preprocesses it.
-    def include(self, path, may_ignore = False):
-        path = self._resolve_path(path)
-
-        if not os.path.exists(path):
-            if may_ignore:
-                return
-            else:
-                raise Exception("file \"{}\" cannot be found".format(path))
+    # file may be a string literal, or a file-like object, or None
+    # If the file is not supplied, the path is used to find the file
+    def include(self, path, file = None, may_ignore = False):
+        if file is None:
+            # Use the path for find the correct file
+            path = self._resolve_path(path)
+            if not os.path.exists(path):
+                if may_ignore:
+                    return
+                else:
+                    raise Exception("file \"{}\" cannot be found".format(path))
+            file = open(path, "r")
         
+        elif type(file) is str:
+            # Treat the file as a literal body
+            file = io.StringIO(file)
+
+        # If the file is not a string, treat it as a file-like object
+        self._include_file(file, path)
+        file.close()
+
+    def expand(self, expr):
+        return self._expand_macros(expr)
+
+    #
+    #     FILE PARSING
+    #
+
+    # Includes and processes the source in a file
+    def _include_file(self, file, path):
+
         # Update the new local path to be relative to the current path.
         prior_local = self._set_local_path(path)
         stack_depth = len(self._enable_stack)
@@ -149,14 +170,12 @@ class Preprocessor():
         prior_line = None
         in_comment = False
 
-        # open the file and start 
-        with open(path, 'r') as file:
-            for line in file.readlines():
-                # do the actual parsing
-                line, prior_line = self._join_escaped_line(line, prior_line)
-                if line:
-                    line, in_comment = self._strip_comments(line, in_comment)
-                    self._preprocess_line(line)
+        for line in file.readlines():
+            # do the actual parsing
+            line, prior_line = self._join_escaped_line(line, prior_line)
+            if line:
+                line, in_comment = self._strip_comments(line, in_comment)
+                self._preprocess_line(line)
                     
  
         if len(self._enable_stack) != stack_depth:
@@ -165,13 +184,6 @@ class Preprocessor():
             raise Exception("unterminated comment found")
 
         self._restore_local_path(prior_local)
-
-    def expand(self, expr):
-        return self._expand_macros(expr, 0)
-
-    #
-    #     LINE PARSING
-    #
 
     # Lines ending with '\' need to be joined.
     def _join_escaped_line(self, line, prior):
@@ -212,23 +224,28 @@ class Preprocessor():
 
         return line, in_comment
 
+    # Checks for preprocessor directives and invokes them.
+    # Returns true if the line was consumed.
+    def _preprocess_directives(self, line, enabled):
+        line = line.strip()
+        if line.startswith("#"):
+            for directive in self._directives:
+                if directive.invoke(line, enabled):
+                    return True
+        return False
+
+
     # Runs a line through the preprocessor
     def _preprocess_line(self, line):
-        line = line.strip()
-        if line:
-            enabled = self._flow_enabled()
-
-            if line.startswith('#'):
-                # this is a preprocessor directive
-                for directive in self._directives:
-                    if directive.invoke(line, enabled):
-                        break
-            else:
-                # Didnt match a preprocessor line - its source.
-                if enabled:
-                    if self.expand_source:
-                        line = self.expand(line)
-                    self.source_lines.append(line)
+        # check for directives
+        enabled = self._flow_enabled()
+        if not self._preprocess_directives(line, enabled):
+            # if not a directive, then the line is source
+            if enabled:
+                if self.expand_source:
+                    # expand macros conditionally - as currently multi line macros are not handled
+                    line = self.expand(line)
+                self.source_lines.append(line)
 
     #
     #     PATH RESOLUTION
@@ -253,7 +270,7 @@ class Preprocessor():
     # Returns the previous path so that it may be restored
     def _set_local_path(self, path):
         prior = self._local_path
-        self._local_path = os.path.dirname(path)
+        self._local_path = os.path.normpath(os.path.dirname(path))
         return prior
 
     # Restores the local path to the previous value
@@ -304,7 +321,7 @@ class Preprocessor():
     def _directive_include(self, args):
         fname = args[0]
         if self.include_rule(fname):
-            self.include(fname, self.ignore_missing_includes)
+            self.include(fname, may_ignore=self.ignore_missing_includes)
 
     # Rule to handle: #error <any>
     def _directive_error(self, args):
@@ -330,7 +347,7 @@ class Preprocessor():
     #     MACRO EXPANSION
     #
 
-    def _expand_macros(self, expr, recurse_depth):
+    def _expand_macros(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:
             raise Exception("Max macro expansion depth exceeded")
 
