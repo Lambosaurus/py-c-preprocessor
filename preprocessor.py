@@ -24,9 +24,9 @@ class Directive():
         return False
 
 class Macro():
-    def __init__(self, token, expr, args = None):
+    def __init__(self, token, expr = None, args = None):
         self.token = token
-        self.expr = expr
+        self.expr = expr if expr else ""
         self.args = args
     
     def __repr__(self):
@@ -61,9 +61,8 @@ class Preprocessor():
     #
 
     def __init__(self):
-        self.macros = {}
-
-        self.directives = [
+        
+        self._directives = [
             # Conditional tokens
             Directive(r"#if\s+(.*)", self._directive_if, True),
             Directive(r"#ifdef\s+(\w+)", self._directive_ifdef, True),
@@ -82,24 +81,26 @@ class Preprocessor():
             # Define statements. Order is important.
             Directive(r"#define\s+(\w+)\(([^\)]*)\)\s*(.*)?", self._directive_define_varidic),
             Directive(r"#define\s+(\w+)\s*(.*)?", self._directive_define),
-            
         ]
 
         self._content_enabled = IF_STATE_NOW
         self._enable_stack = []
-
-        self.source_lines = []
-
-        self.include_rule = lambda name: True
-        self.include_paths = []
-        self.ignore_missing_includes = False
-
         self._local_path = ""
-        self.max_macro_expansion_depth = 4096
 
         # special macro required to make the define statement work
         self._defined_macro = Macro("defined", "?", ["token"])
         self._defined_macro.expand = lambda args: "1" if self.is_defined(args[0]) else "0"
+
+        self.macros = {}
+        self.include_rule = lambda name: True
+        self.include_paths = []
+        self.ignore_missing_includes = False
+
+        self.source_lines = []
+        self.max_macro_expansion_depth = 4096
+        self.expand_source = True
+
+
 
     #
     #      PUBLIC INTERFACE
@@ -116,7 +117,7 @@ class Preprocessor():
         return "\n".join(self.source_lines)
 
     # Defines a symbol
-    def define(self, token, expr = "", args = None):
+    def define(self, token, expr = None, args = None):
         self.macros[token] = Macro(token, expr, args)
     
     # Undefines a symbol
@@ -218,14 +219,15 @@ class Preprocessor():
             enabled = self._flow_enabled()
 
             if line.startswith('#'):
-                # this is a preprocessor line
-                for directive in self.directives:
+                # this is a preprocessor directive
+                for directive in self._directives:
                     if directive.invoke(line, enabled):
                         break
             else:
+                # Didnt match a preprocessor line - its source.
                 if enabled:
-                    # Didnt match a preprocessor line - its source.
-                    line = self.expand(line)
+                    if self.expand_source:
+                        line = self.expand(line)
                     self.source_lines.append(line)
 
     #
@@ -267,18 +269,12 @@ class Preprocessor():
 
     # Rule to handle: #define <token> [<expression>]
     def _directive_define(self, args):
-        if len(args) == 2:
-            self.define(args[0], args[1])
-        else:
-            self.define(args[0])
+        self.define(args[0], args[1])
 
     # Rule to handle: #define <token>(<any>) [<expression>]
     def _directive_define_varidic(self, args):
         varargs = [ a.strip() for a in args[1].split(",") ]
-        if len(args) == 3:
-            self.define(args[0], args[2], varargs)
-        else:
-            self.define(args[0], args=varargs)
+        self.define(args[0], args[2], varargs)
 
     # Rule to handle: #if <expression>
     def _directive_if(self, args):
@@ -320,10 +316,14 @@ class Preprocessor():
 
     # Rule to handle: #pragma <any>
     def _directive_pragma(self, args):
+
+        # custom pragma to execute python within the source. Useful for debugging.
+        # #pragma python "print(p.macros)"
+        # The current preprocessor instance is passed as the only local: p
         match = re.match(r"python\s+\"([^\"]*)\"", args[0])
         if match:
             expr = match.groups()[0]
-            eval(expr)
+            eval(expr, None, { "p": self })
     
 
     #
@@ -351,7 +351,7 @@ class Preprocessor():
                 macro = self.macros[token]
                 if macro.args != None:
 
-                    if len(groups) < 2:
+                    if groups[1] == None:
                         raise Exception("Macro {0} requires arguments".format(token))
 
                     # expand the macro with the arguments

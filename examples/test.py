@@ -43,19 +43,19 @@ def test_usb_class_cdc():
 def test_expression_evaluation():
     p = Preprocessor()
     p.ignore_missing_includes = True
+    p.expand_source = False # Required due to issue #2
     p.add_include_path(SRC_PATH)
 
     p.define("USB_CLASS_CDC")
     p.include("usb/cdc/USB_CDC.c")
 
-    test_assert(p.evaluate("CDC_BFR_WRAP(512)"), 0)
+    # Test that the macro is expanded and evaluated
+    test_assert(p.evaluate("CDC_BFR_WRAP(CDC_BFR_SIZE + 23)"), 23)
 
-
-
+    print(p.source())
 
 
 if __name__ == "__main__":
-
     test_usb_class_cdc()
     test_usb_class_msc()
     test_expression_evaluation()
