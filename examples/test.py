@@ -11,7 +11,87 @@ def test_assert(expr, expected):
     if expr != expected:
         raise AssertionError("Expected {}, got {}".format(expected, expr))
 
-# Tests macros included from USB_CLASS_MSC
+
+
+# Tests that a macro can be evaluated
+def test_macro_evaluation():
+    p = Preprocessor()
+
+    p.define("MACRO_CONST", "0x1")
+    p.define("MACRO_A", "(a + b)", ["a","b"])
+    p.define("MACRO_B", "(a + MACRO_CONST)", ["a"])
+    p.define("MACRO_C", "(MACRO_A(a, 1) + MACRO_B(b))", ["a", "b"])
+    p.define("MACRO_D", "(v & (512 - 1))", "v")
+
+    # test basic macro evaluation works
+    test_assert(p.evaluate("(3 + 4) / 2"), 3)
+    test_assert(p.evaluate("MACRO_CONST + 1"), 2)
+    test_assert(p.evaluate("MACRO_A(1, 2)"), 3)
+    test_assert(p.evaluate("MACRO_B(10)"), 11)
+    test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
+    test_assert(p.evaluate("MACRO_D(512 + MACRO_CONST)"), 1)
+
+
+# Tests for conditional directives
+def test_conditional_directives():
+    src = """
+    #if defined(CASE_A)
+    #define MACRO_A 1
+    #elif (CASE_B == 1)
+    #define MACRO_A 2
+    #else
+    #define MACRO_A 3
+    #endif
+    """
+
+    p = Preprocessor()
+    p.define("CASE_A")
+    p.include("source.c",src)
+    test_assert(p.evaluate("MACRO_A"), 1)
+
+    p = Preprocessor()
+    p.define("CASE_B", "1")
+    p.include("source.c",src)
+    test_assert(p.evaluate("MACRO_A"), 2)
+
+    p = Preprocessor()
+    p.undefine("CASE_B")
+    p.include("source.c",src)
+    test_assert(p.evaluate("MACRO_A"), 3)
+
+# Tests for including a file
+def test_include():
+    p = Preprocessor()
+    p.add_include_path(SRC_PATH)
+    p.include("test.h")
+    
+    test_assert(p.evaluate("MACRO_A(1, 2)"), 3)
+    test_assert(p.evaluate("MACRO_B(1)"),   2)
+    test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
+    test_assert(p.evaluate("MACRO_D(513)"), 1)
+
+
+# tests that macros with with tested arguments or embedded in strings are correctly handled
+def test_embedded_macros():
+    p = Preprocessor()
+
+    p.define("MACRO_A", "(a + b)", ["a","b"])
+    p.define("MACRO_B", "(a + 1)", ["a"])
+
+    # check for nested macros
+    test_assert(p.evaluate("MACRO_A(1,MACRO_B(2))"), 4)
+
+    # check alternate spacing
+    test_assert(p.evaluate("MACRO_A ( 1, MACRO_B( 2 ) )"), 4)
+
+    # try other orientation
+    test_assert(p.evaluate("MACRO_A(MACRO_B( 2 ), 1)"), 4)
+
+    # check for macro expansion in strings
+    test_assert(p.evaluate("\"MACRO_A(1,MACRO_B(2))\""), "MACRO_A(1,MACRO_B(2))")
+
+
+# Real world test cases using the USB MSC example
 def test_usb_class_msc():
     p = Preprocessor()
     p.ignore_missing_includes = True
@@ -25,7 +105,7 @@ def test_usb_class_msc():
     test_assert(p.expand("USB_CLASS_DEVICE_DESCRIPTOR"), "cUSB_MSC_ConfigDescriptor")
     test_assert(p.expand("USB_CLASS_INIT(0)"), "USB_MSC_Init(0)")
 
-# Tests macros included from USB_CLASS_CDC 
+# Real world test cases using the USB CDC example
 def test_usb_class_cdc():
     p = Preprocessor()
     p.ignore_missing_includes = True
@@ -39,26 +119,14 @@ def test_usb_class_cdc():
     test_assert(p.expand("USB_CLASS_DEVICE_DESCRIPTOR"), "cUSB_CDC_ConfigDescriptor")
     test_assert(p.expand("USB_CLASS_INIT(0)"), "USB_CDC_Init(0)")
 
-# Tests that multi stage expressions can be evaluated
-def test_expression_evaluation():
-    p = Preprocessor()
-    p.ignore_missing_includes = True
-    p.expand_source = False # Required due to issue #2
-    p.add_include_path(SRC_PATH)
 
-    p.define("USB_CLASS_CDC")
-    p.include("usb/cdc/USB_CDC.c")
-
-    # test that evaluation works
-    test_assert(p.evaluate("(3 + 4) / 2"), 3)
-    
-    # Test that the macro expansion and evaluation works
-    test_assert(p.evaluate("CDC_BFR_WRAP(CDC_BFR_SIZE + 23)"), 23)
-    
-    print(p.source())
-
+def run_tests():
+    test_macro_evaluation()
+    test_conditional_directives()
+    test_include()
+    test_embedded_macros()
+    test_usb_class_msc()
+    test_usb_class_cdc()
 
 if __name__ == "__main__":
-    test_usb_class_cdc()
-    test_usb_class_msc()
-    test_expression_evaluation()
+    run_tests()
