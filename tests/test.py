@@ -85,6 +85,12 @@ def test_string_embedded_macros():
     # check for macro expansion in strings
     test_assert(p.evaluate('"MACRO_A(1,MACRO_B(2))"'), "MACRO_A(1,MACRO_B(2))")
 
+    # check for parenthesis and commas in strings
+    test_assert(p.evaluate('MACRO_A("TEXT, ", ")")'), "TEXT, )")
+
+    # check for escaped symbols in strings
+    test_assert(p.evaluate('"\'\\\"\\\\"'), "'\"\\")
+
 
 # tests that macros with with nested arguments are correctly handled
 def test_nested_macros():
@@ -116,7 +122,7 @@ def test_source_expansion():
     # Include a piece of source with some macros to be expanded.
     # Note the multiline macro expansion.
     
-    p.define("MACRO_CONST", "1")
+    p.define("MACRO_CONST", "3")
     p.include("main.c", """
 
     #define MACRO_A(a,b) (a + b)
@@ -137,7 +143,7 @@ def test_source_expansion():
     int void main(void)
     {
         int a = (1 + 2);
-        return (a + (1 + b));
+        return (a + (1 + 3));
     }
     """
 
