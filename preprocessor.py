@@ -99,7 +99,6 @@ class Preprocessor():
 
         self.source_lines = []
         self.max_macro_expansion_depth = 4096
-        self.expand_source = True
 
     #
     #      PUBLIC INTERFACE
@@ -236,9 +235,7 @@ class Preprocessor():
         if not self._preprocess_directives(line, enabled):
             # if not a directive, then the line is source
             if enabled:
-                if self.expand_source:
-                    # expand macros conditionally - as currently multi line macros are not handled
-                    line = self.expand(line)
+                line = self.expand(line)
                 self.source_lines.append(line)
 
     #

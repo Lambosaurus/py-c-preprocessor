@@ -95,6 +95,47 @@ def test_embedded_macros():
     # check for macro expansion in strings
     test_assert(p.evaluate('"MACRO_A(1,MACRO_B(2))"'), "MACRO_A(1,MACRO_B(2))")
 
+# Test that source is correctly expanded
+def test_source_expansion():
+    p = Preprocessor()
+
+    # Include a piece of source with some macros to be expanded.
+    # Note the multiline macro expansion.
+    
+    p.define("MACRO_CONST", "1")
+    p.include("main.c", """
+
+    #define MACRO_A(a,b) (a + b)
+    #define MACRO_B(a,b) MACRO_A(a, MACRO_B(b))
+
+    int void main(void)
+    {
+        int a = MACRO_A(1,2);
+        return MACRO_B(
+            a,
+            MACRO_CONST
+        );
+    }
+
+    """)
+
+    expected = """
+    int void main(void)
+    {
+        int a = (1 + 2);
+        return ((a + 1) + 1);
+    }
+    """
+
+    # Remove whitespace - too much of a pain to test.
+    def trim_whitespace(s):
+        return " ".join(s.split())
+    
+    # Check that the source is expanded correctly
+    source = p.source()
+    test_assert(trim_whitespace(source), trim_whitespace(expected))
+
+
 # Real world test cases using the USB MSC example
 def test_usb_class_msc():
     p = Preprocessor()
@@ -132,11 +173,13 @@ def test_include_source():
     p.include("usb/cdc/USB_CDC.c")
     p.source()
 
+# Run all the tests
 def run_tests():
     test_macro_evaluation()
     test_conditional_directives()
     test_include()
     test_embedded_macros()
+    test_source_expansion()
     test_usb_class_msc()
     test_usb_class_cdc()
     test_include_source()
