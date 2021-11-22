@@ -71,10 +71,30 @@ def test_include():
     test_assert(p.evaluate("MACRO_D(513)"), 1)
 
 
-# tests that macros with with tested arguments or embedded in strings are correctly handled
-def test_embedded_macros():
+# tests that macros with embedded in strings are correctly handled
+def test_string_embedded_macros():
     p = Preprocessor()
+    p.define("MACRO_CONST", "0x1")
+    p.define("MACRO_A", "(a + b)", ["a","b"])
+    p.define("MACRO_B", "(a + 1)", ["a"])
 
+    # check for macro expansion in strings
+    # Note, this is incorrect logic for C string gluing, but it is a good test
+    test_assert(p.evaluate('MACRO_A("TEXT ","MACRO_CONST")'), "TEXT MACRO_CONST")
+
+    # check for macro expansion in strings
+    test_assert(p.evaluate('"MACRO_A(1,MACRO_B(2))"'), "MACRO_A(1,MACRO_B(2))")
+
+    # check for parenthesis and commas in strings
+    test_assert(p.evaluate('MACRO_A("TEXT, ", ")")'), "TEXT, )")
+
+    # check for escaped symbols in strings
+    test_assert(p.evaluate('"\'\\\"\\\\"'), "'\"\\")
+
+
+# tests that macros with with nested arguments are correctly handled
+def test_nested_macros():
+    p = Preprocessor()
     p.define("MACRO_CONST", "0x1")
     p.define("MACRO_A", "(a + b)", ["a","b"])
     p.define("MACRO_B", "(a + 1)", ["a"])
@@ -88,12 +108,53 @@ def test_embedded_macros():
     # try other orientation
     test_assert(p.evaluate("MACRO_A(MACRO_B( 2 ), 1)"), 4)
 
-    # check for macro expansion in strings
-    # Note, this is incorrect logic for C string gluing, but it is a good test
-    test_assert(p.evaluate('MACRO_A("TEXT ","MACRO_CONST")'), "TEXT MACRO_CONST")
+    # check that nested macros with commas work
+    test_assert(p.evaluate("MACRO_A(1, MACRO_A(3,4))"), 8)
 
-    # check for macro expansion in strings
-    test_assert(p.evaluate('"MACRO_A(1,MACRO_B(2))"'), "MACRO_A(1,MACRO_B(2))")
+    # check a heavily nested macro
+    test_assert(p.evaluate("MACRO_A(1, MACRO_B(MACRO_A(3,MACRO_B(1))))"), 7)
+
+
+# Test that source is correctly expanded
+def test_source_expansion():
+    p = Preprocessor()
+
+    # Include a piece of source with some macros to be expanded.
+    # Note the multiline macro expansion.
+    
+    p.define("MACRO_CONST", "3")
+    p.include("main.c", """
+
+    #define MACRO_A(a,b) (a + b)
+    #define MACRO_B(a,b) MACRO_A(a, MACRO_A(1, b))
+
+    int void main(void)
+    {
+        int a = MACRO_A(1,2);
+        return MACRO_B(
+            a,
+            MACRO_CONST
+        );
+    }
+
+    """)
+
+    expected = """
+    int void main(void)
+    {
+        int a = (1 + 2);
+        return (a + (1 + 3));
+    }
+    """
+
+    # Remove whitespace - too much of a pain to test.
+    def trim_whitespace(s):
+        return " ".join(s.split())
+    
+    # Check that the source is expanded correctly
+    source = p.source()
+    test_assert(trim_whitespace(source), trim_whitespace(expected))
+
 
 # Real world test cases using the USB MSC example
 def test_usb_class_msc():
@@ -132,11 +193,14 @@ def test_include_source():
     p.include("usb/cdc/USB_CDC.c")
     p.source()
 
+# Run all the tests
 def run_tests():
     test_macro_evaluation()
     test_conditional_directives()
     test_include()
-    test_embedded_macros()
+    test_string_embedded_macros()
+    test_nested_macros()
+    test_source_expansion()
     test_usb_class_msc()
     test_usb_class_cdc()
     test_include_source()

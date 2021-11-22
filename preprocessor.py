@@ -11,13 +11,14 @@ TOKEN_SEARCH_REGEX = re.compile(r"(\w+)")
 PAREN_SEARCH_REGEX = re.compile(r"\s*\(")
 
 class Directive():
-    def __init__(self, pattern, action, always_parse = False):
+    def __init__(self, pattern, action, conditional = False):
         self.pattern = re.compile(pattern)
         self.action = action
-        self.always_parse = always_parse
+        self.conditional = conditional
 
     def invoke(self, line, parse_enabled):
-        if parse_enabled or self.always_parse:
+        # conditional directives must be checked even on disabled parse
+        if parse_enabled or self.conditional:
             match = self.pattern.match(line)
             if match:
                 self.action(match.groups())
@@ -56,11 +57,6 @@ class Macro():
 
 
 class Preprocessor():
-
-    #
-    #      CONSTRUCTOR / DESTRUCTOR
-    #
-
     def __init__(self):
         
         self._directives = [
@@ -87,6 +83,7 @@ class Preprocessor():
         self._content_enabled = IF_STATE_NOW
         self._enable_stack = []
         self._local_path = ""
+        self._source_prior = None
 
         # special macro required to make the define statement work
         self._defined_macro = Macro("defined", "?", ["token"])
@@ -99,7 +96,6 @@ class Preprocessor():
 
         self.source_lines = []
         self.max_macro_expansion_depth = 4096
-        self.expand_source = True
 
     #
     #      PUBLIC INTERFACE
@@ -171,11 +167,13 @@ class Preprocessor():
                 line, in_comment = self._strip_comments(line, in_comment)
                 self._preprocess_line(line)
                     
- 
         if len(self._enable_stack) != stack_depth:
             raise Exception("unterminated #if found")
         if in_comment:
             raise Exception("unterminated comment found")
+        if self._source_prior:
+            self._source_prior = None
+            raise Exception("unterminated macro expression")
 
         self._restore_local_path(prior_local)
 
@@ -228,7 +226,6 @@ class Preprocessor():
                     return True
         return False
 
-
     # Runs a line through the preprocessor
     def _preprocess_line(self, line):
         # check for directives
@@ -236,10 +233,13 @@ class Preprocessor():
         if not self._preprocess_directives(line, enabled):
             # if not a directive, then the line is source
             if enabled:
-                if self.expand_source:
-                    # expand macros conditionally - as currently multi line macros are not handled
-                    line = self.expand(line)
-                self.source_lines.append(line)
+                if self._source_prior:
+                    # glue the prior line to the new line
+                    line = self._source_prior + line
+                    self._source_prior = None
+                line, self._source_prior = self._expand_macros(line)
+                if line:
+                    self.source_lines.append(line)
 
     #
     #     PATH RESOLUTION
@@ -345,14 +345,14 @@ class Preprocessor():
     def _find_string_end(self, line, pos, endchar):
         while pos < len(line):
             if line[pos] == endchar:
-                return pos
+                return pos + 1
             pos += 1
         raise Exception("Unterminated string")
 
     # Looks for a closed pair of parentheses in the line.
     # If found, returns the index of the first character after the pair.
     # If not found, returns -1.
-    def _find_parentheses_close(self, line, start):
+    def _find_parentheses_end(self, line, start):
         # find the matching parenthesis
         depth = 1
         i = start
@@ -365,6 +365,7 @@ class Preprocessor():
                     return i + 1
             elif line[i] in "'\"":
                 i = self._find_string_end(line, i+1, line[i])
+                continue
             i += 1
         return None
 
@@ -373,12 +374,12 @@ class Preprocessor():
         match = PAREN_SEARCH_REGEX.match(line, start)
         if match:
             start = match.end()
-            end = self._find_parentheses_close(line, start)
+            end = self._find_parentheses_end(line, start)
             return start-1, end
         return None, None
 
     # Finds the next valid token to consider for macro replacement
-    def _find_next_token(self, line, start):
+    def _find_token(self, line, start):
         while True:
             # find a candidate token
             match = TOKEN_SEARCH_REGEX.search(line, start)
@@ -390,7 +391,8 @@ class Preprocessor():
                 # if we hit a string, skip over it
                 if line[i] in "'\"":
                     i = self._find_string_end(line, i+1, line[i])
-                i += 1
+                else:
+                    i += 1
             
             if i > start:
                 # Did we skip our token?
@@ -399,9 +401,37 @@ class Preprocessor():
             else:
                 return match.span()
         return None, None
+
+    # splits an argument string into a list of arguments
+    # care should be taken not to split inside a string or parenthesis
+    def _split_args(self, args):
+        arglist = []
+        i = 0
+        arg_start = 0
+        while i < len(args):
+            if args[i] in "'\"":
+                i = self._find_string_end(args, i+1, args[i])
+            elif args[i] == '(':
+                i = self._find_parentheses_end(args, i+1)
+            elif args[i] == ',':
+                arglist.append(args[arg_start:i].strip())
+                arg_start = i + 1
+                i += 1
+            else:
+                i += 1
+        arglist.append(args[arg_start:].strip())
+        return arglist
+
+
+    # Expands all macros in the given expression
+    def expand(self, expr):
+        expr, remainder = self._expand_macros(expr)
+        if remainder:
+            raise Exception("Unterminated macro in expression")
+        return expr
     
     # Expands all macros in the given expression
-    def expand(self, expr, recurse_depth = 0):
+    def _expand_macros(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:
             raise Exception("Max macro expansion depth exceeded")
 
@@ -410,7 +440,7 @@ class Preprocessor():
         while True:
 
             # find a token for consideration
-            start, end = self._find_next_token(expr, start)
+            start, end = self._find_token(expr, start)
             if start == None:
                 break
             token = expr[start:end]
@@ -422,12 +452,15 @@ class Preprocessor():
 
                     # find the arguments
                     arg_start, arg_end = self._find_arguments(expr, end)
-                    if arg_end == None:
+                    if arg_start == None:
                         raise Exception("Macro {0} expects arguments".format(token))
+                    elif arg_end == None:
+                        # We have an unterminated argument list.
+                        # this line will have to be glued to the next line.
+                        return None, expr
 
                     # separate the arguments
-                    args = expr[arg_start+1:arg_end-1].split(",")
-                    args = [ a.strip() for a in args ]
+                    args = self._split_args(expr[arg_start+1:arg_end-1])
 
                     if len(args) != len(macro.args):
                         raise Exception("Macro {0} requires {1} arguments".format(token, len(macro.args)))
@@ -440,7 +473,7 @@ class Preprocessor():
                     macro_expr = macro.expand()
                 
                 # recusively expand the macro
-                macro_expr = self.expand(macro_expr, recurse_depth + 1)
+                macro_expr, _ = self._expand_macros(macro_expr, recurse_depth + 1)
                 # replace the macro with the expanded expression
                 expr = expr[:start] + macro_expr + expr[end:]
                 start += len(macro_expr)
@@ -448,7 +481,7 @@ class Preprocessor():
                 # proceed over the token
                 start = end
 
-        return expr
+        return expr, None
 
     #
     #     EXPRESSION EVALUATION
@@ -468,7 +501,6 @@ class Preprocessor():
         re.sub(r"!([^?==])", r" not \1", expr)
         
         result = eval(expr)
-        
         return result
 
     # Tests an expression for truth.
@@ -510,6 +542,7 @@ class Preprocessor():
             # Only accept the new state if we have not yet matched an if block.
             self._content_enabled = IF_STATE_NOW
 
+    # returns true if the current #if block is enabled
     def _flow_enabled(self):
         return self._content_enabled == IF_STATE_NOW
 
