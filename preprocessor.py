@@ -374,13 +374,36 @@ class Preprocessor():
             i += 1
         return None
 
-    # Finds the arguments (<any>), taking care to skip 
+    # Finds the arguments (<any>), taking care to skip embedded strings
     def _find_arguments(self, line, start):
         match = PAREN_SEARCH_REGEX.match(line, start)
         if match:
             start = match.end()
             end = self._find_parentheses_close(line, start)
             return start-1, end
+        return None, None
+
+    # Finds the next valid token to consider for macro replacement
+    def _find_next_token(self, line, start):
+        while True:
+            # find a candidate token
+            match = TOKEN_SEARCH_REGEX.search(line, start)
+            if not match:
+                break
+            i = start
+            start = match.start()
+            while i < start:
+                # if we hit a string, skip over it
+                if line[i] in "'\"":
+                    i = self._find_string_end(line, i+1, line[i])
+                i += 1
+            
+            if i > start:
+                # Did we skip our token?
+                # If so, it must have been in a stirng.
+                start = i
+            else:
+                return match.span()
         return None, None
     
     # Expands all macros in the given expression
@@ -391,13 +414,12 @@ class Preprocessor():
         # expand macros
         start = 0
         while True:
-            # find a token with optional arguments
-            match = TOKEN_SEARCH_REGEX.search(expr, start)
-            if not match:
+
+            # find a token for consideration
+            start, end = self._find_next_token(expr, start)
+            if start == None:
                 break
-            
-            start = match.start()
-            token = match.groups()[0]
+            token = expr[start:end]
 
             if token in self.macros:
                 # expand the macro
@@ -405,7 +427,7 @@ class Preprocessor():
                 if macro.args != None:
 
                     # find the arguments
-                    arg_start, arg_end = self._find_arguments(expr, match.end())
+                    arg_start, arg_end = self._find_arguments(expr, end)
                     if arg_end == None:
                         raise Exception("Macro {0} expects arguments".format(token))
 
@@ -422,7 +444,6 @@ class Preprocessor():
                 else:
                     # expand the macro without arguments
                     macro_expr = macro.expand()
-                    end = start + len(token) # only token is consumed
                 
                 # recusively expand the macro
                 macro_expr = self._expand_macros(macro_expr, recurse_depth + 1)
@@ -430,7 +451,8 @@ class Preprocessor():
                 expr = expr[:start] + macro_expr + expr[end:]
                 start += len(macro_expr)
             else:
-                start += len(token)
+                # proceed over the token
+                start = end
 
         return expr
 
