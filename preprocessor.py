@@ -83,6 +83,7 @@ class Preprocessor():
         self._content_enabled = IF_STATE_NOW
         self._enable_stack = []
         self._local_path = ""
+        self._source_prior = None
 
         # special macro required to make the define statement work
         self._defined_macro = Macro("defined", "?", ["token"])
@@ -170,6 +171,9 @@ class Preprocessor():
             raise Exception("unterminated #if found")
         if in_comment:
             raise Exception("unterminated comment found")
+        if self._source_prior:
+            self._source_prior = None
+            raise Exception("unterminated macro expression")
 
         self._restore_local_path(prior_local)
 
@@ -229,8 +233,13 @@ class Preprocessor():
         if not self._preprocess_directives(line, enabled):
             # if not a directive, then the line is source
             if enabled:
-                line = self.expand(line)
-                self.source_lines.append(line)
+                if self._source_prior:
+                    # glue the prior line to the new line
+                    line = self._source_prior + line
+                    self._source_prior = None
+                line, self._source_prior = self._expand_macros(line)
+                if line:
+                    self.source_lines.append(line)
 
     #
     #     PATH RESOLUTION
@@ -390,9 +399,16 @@ class Preprocessor():
             else:
                 return match.span()
         return None, None
+
+    # Expands all macros in the given expression
+    def expand(self, expr):
+        expr, remainder = self._expand_macros(expr)
+        if remainder:
+            raise Exception("Unterminated macro in expression")
+        return expr
     
     # Expands all macros in the given expression
-    def expand(self, expr, recurse_depth = 0):
+    def _expand_macros(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:
             raise Exception("Max macro expansion depth exceeded")
 
@@ -413,8 +429,12 @@ class Preprocessor():
 
                     # find the arguments
                     arg_start, arg_end = self._find_arguments(expr, end)
-                    if arg_end == None:
+                    if arg_start == None:
                         raise Exception("Macro {0} expects arguments".format(token))
+                    elif arg_end == None:
+                        # We have an unterminated argument list.
+                        # this line will have to be glued to the next line.
+                        return None, expr
 
                     # separate the arguments
                     args = expr[arg_start+1:arg_end-1].split(",")
@@ -431,7 +451,7 @@ class Preprocessor():
                     macro_expr = macro.expand()
                 
                 # recusively expand the macro
-                macro_expr = self.expand(macro_expr, recurse_depth + 1)
+                macro_expr, _ = self._expand_macros(macro_expr, recurse_depth + 1)
                 # replace the macro with the expanded expression
                 expr = expr[:start] + macro_expr + expr[end:]
                 start += len(macro_expr)
@@ -439,7 +459,7 @@ class Preprocessor():
                 # proceed over the token
                 start = end
 
-        return expr
+        return expr, None
 
     #
     #     EXPRESSION EVALUATION
