@@ -346,7 +346,10 @@ class Preprocessor():
         while pos < len(line):
             if line[pos] == endchar:
                 return pos + 1
-            pos += 1
+            elif line[pos] == "\\":
+                pos += 2
+            else:
+                pos += 1
         raise Exception("Unterminated string")
 
     # Looks for a closed pair of parentheses in the line.

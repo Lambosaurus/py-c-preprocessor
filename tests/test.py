@@ -89,7 +89,7 @@ def test_string_embedded_macros():
     test_assert(p.evaluate('MACRO_A("TEXT, ", ")")'), "TEXT, )")
 
     # check for escaped symbols in strings
-    test_assert(p.evaluate('"\'\\\"\\\\"'), "'\"\\")
+    test_assert(p.evaluate('MACRO_A("\'\\\\ \\" ","TEXT")'), "'\\ \" TEXT")
 
 
 # tests that macros with with nested arguments are correctly handled
