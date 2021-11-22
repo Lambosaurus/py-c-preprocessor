@@ -128,9 +128,6 @@ class Preprocessor():
     def is_defined(self, token):
         return token in self.macros
 
-    def evaluate(self, expr):
-        return self._evaluate_expression(expr)
-
     # Consumes a file and preprocesses it.
     # file may be a string literal, or a file-like object, or None
     # If the file is not supplied, the path is used to find the file
@@ -152,9 +149,6 @@ class Preprocessor():
         # If the file is not a string, treat it as a file-like object
         self._include_file(file, path)
         file.close()
-
-    def expand(self, expr):
-        return self._expand_macros(expr)
 
     #
     #     FILE PARSING
@@ -407,7 +401,7 @@ class Preprocessor():
         return None, None
     
     # Expands all macros in the given expression
-    def _expand_macros(self, expr, recurse_depth = 0):
+    def expand(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:
             raise Exception("Max macro expansion depth exceeded")
 
@@ -446,7 +440,7 @@ class Preprocessor():
                     macro_expr = macro.expand()
                 
                 # recusively expand the macro
-                macro_expr = self._expand_macros(macro_expr, recurse_depth + 1)
+                macro_expr = self.expand(macro_expr, recurse_depth + 1)
                 # replace the macro with the expanded expression
                 expr = expr[:start] + macro_expr + expr[end:]
                 start += len(macro_expr)
@@ -461,7 +455,7 @@ class Preprocessor():
     #
 
     # Evaluates an expression
-    def _evaluate_expression(self, expr):
+    def evaluate(self, expr):
 
         self.macros["defined"] = self._defined_macro
         expr = self.expand(expr)
@@ -480,7 +474,7 @@ class Preprocessor():
     # Tests an expression for truth.
     def _test_expression(self, expr):
         try:
-            result = self._evaluate_expression(expr)
+            result = self.evaluate(expr)
             if type(result) is str:
                 return False
             return bool(result)
