@@ -57,11 +57,6 @@ class Macro():
 
 
 class Preprocessor():
-
-    #
-    #      CONSTRUCTOR / DESTRUCTOR
-    #
-
     def __init__(self):
         
         self._directives = [
@@ -171,7 +166,6 @@ class Preprocessor():
                 line, in_comment = self._strip_comments(line, in_comment)
                 self._preprocess_line(line)
                     
- 
         if len(self._enable_stack) != stack_depth:
             raise Exception("unterminated #if found")
         if in_comment:
@@ -227,7 +221,6 @@ class Preprocessor():
                 if directive.invoke(line, enabled):
                     return True
         return False
-
 
     # Runs a line through the preprocessor
     def _preprocess_line(self, line):
@@ -507,6 +500,7 @@ class Preprocessor():
             # Only accept the new state if we have not yet matched an if block.
             self._content_enabled = IF_STATE_NOW
 
+    # returns true if the current #if block is enabled
     def _flow_enabled(self):
         return self._content_enabled == IF_STATE_NOW
 
