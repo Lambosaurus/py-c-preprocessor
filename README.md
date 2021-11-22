@@ -12,6 +12,11 @@ File can be passed in by paths, and headers included by #include directives, or 
 # Why?
 I wanted to be able to parse C headers programmatically in python, and use found definitions for code generation. This originally started as just a way to gather all defined macros, but it turns out you need to do most other tasks to do that correctly in a realistic code base. All other features are an eventual result of this requirement.
 
+I could have solved this by just using gcc -E, but I had some reasons not to:
+ * Didnt want to write to the file system
+ * Didnt want to introduce a compiler as a dependancy
+ * Having all expressions in python makes code generation/examination very tidy
+
 # How?
 Mostly regex. Github Copilot was actually much more useful that expected.
 
