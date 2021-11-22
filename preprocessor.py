@@ -345,7 +345,7 @@ class Preprocessor():
     def _find_string_end(self, line, pos, endchar):
         while pos < len(line):
             if line[pos] == endchar:
-                return pos
+                return pos + 1
             pos += 1
         raise Exception("Unterminated string")
 
@@ -365,6 +365,7 @@ class Preprocessor():
                     return i + 1
             elif line[i] in "'\"":
                 i = self._find_string_end(line, i+1, line[i])
+                continue
             i += 1
         return None
 
@@ -390,7 +391,8 @@ class Preprocessor():
                 # if we hit a string, skip over it
                 if line[i] in "'\"":
                     i = self._find_string_end(line, i+1, line[i])
-                i += 1
+                else:
+                    i += 1
             
             if i > start:
                 # Did we skip our token?
@@ -399,6 +401,27 @@ class Preprocessor():
             else:
                 return match.span()
         return None, None
+
+    # splits an argument string into a list of arguments
+    # care should be taken not to split inside a string or parenthesis
+    def _split_args(self, args):
+        arglist = []
+        i = 0
+        arg_start = 0
+        while i < len(args):
+            if args[i] in "'\"":
+                i = self._find_string_end(args, i+1, args[i])
+            elif args[i] == '(':
+                i = self._find_parentheses_end(args, i+1)
+            elif args[i] == ',':
+                arglist.append(args[arg_start:i].strip())
+                arg_start = i + 1
+                i += 1
+            else:
+                i += 1
+        arglist.append(args[arg_start:].strip())
+        return arglist
+
 
     # Expands all macros in the given expression
     def expand(self, expr):
@@ -437,8 +460,7 @@ class Preprocessor():
                         return None, expr
 
                     # separate the arguments
-                    args = expr[arg_start+1:arg_end-1].split(",")
-                    args = [ a.strip() for a in args ]
+                    args = self._split_args(expr[arg_start+1:arg_end-1])
 
                     if len(args) != len(macro.args):
                         raise Exception("Macro {0} requires {1} arguments".format(token, len(macro.args)))
