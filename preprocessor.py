@@ -11,13 +11,14 @@ TOKEN_SEARCH_REGEX = re.compile(r"(\w+)")
 PAREN_SEARCH_REGEX = re.compile(r"\s*\(")
 
 class Directive():
-    def __init__(self, pattern, action, always_parse = False):
+    def __init__(self, pattern, action, conditional = False):
         self.pattern = re.compile(pattern)
         self.action = action
-        self.always_parse = always_parse
+        self.conditional = conditional
 
     def invoke(self, line, parse_enabled):
-        if parse_enabled or self.always_parse:
+        # conditional directives must be checked even on disabled parse
+        if parse_enabled or self.conditional:
             match = self.pattern.match(line)
             if match:
                 self.action(match.groups())
@@ -349,7 +350,7 @@ class Preprocessor():
     # Looks for a closed pair of parentheses in the line.
     # If found, returns the index of the first character after the pair.
     # If not found, returns -1.
-    def _find_parentheses_close(self, line, start):
+    def _find_parentheses_end(self, line, start):
         # find the matching parenthesis
         depth = 1
         i = start
@@ -370,12 +371,12 @@ class Preprocessor():
         match = PAREN_SEARCH_REGEX.match(line, start)
         if match:
             start = match.end()
-            end = self._find_parentheses_close(line, start)
+            end = self._find_parentheses_end(line, start)
             return start-1, end
         return None, None
 
     # Finds the next valid token to consider for macro replacement
-    def _find_next_token(self, line, start):
+    def _find_token(self, line, start):
         while True:
             # find a candidate token
             match = TOKEN_SEARCH_REGEX.search(line, start)
@@ -407,7 +408,7 @@ class Preprocessor():
         while True:
 
             # find a token for consideration
-            start, end = self._find_next_token(expr, start)
+            start, end = self._find_token(expr, start)
             if start == None:
                 break
             token = expr[start:end]
@@ -465,7 +466,6 @@ class Preprocessor():
         re.sub(r"!([^?==])", r" not \1", expr)
         
         result = eval(expr)
-        
         return result
 
     # Tests an expression for truth.
