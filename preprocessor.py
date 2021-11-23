@@ -434,6 +434,7 @@ class Preprocessor():
         return expr
     
     # Expands all macros in the given expression
+    # May return a remainder string if the expression is not fully expanded
     def _expand_macros(self, expr, recurse_depth = 0):
         if recurse_depth > self.max_macro_expansion_depth:
             raise Exception("Max macro expansion depth exceeded")

@@ -20,10 +20,51 @@ I could have solved this by just using gcc -E, but I had some reasons not to:
 # How?
 Mostly regex. Github Copilot was actually much more useful that expected.
 
-# Features:
- * Handles multi line directives
- * Removes comments
- * #ifdef and other conditional directives
- * #include directives
- * #define directives
- * Macro expansion
+# Usage
+
+```python
+from preprocessor import Preprocessor
+p = Preprocessor()
+
+# Include paths for headers can be specified
+p.add_include_path('/path/to/headers')
+
+# You can ignore missing includes to skip system included headers, such as stdio.h
+p.ignore_missing_includes = True
+
+# Macros can be defined before parsing
+p.define('MACRO_A', '1')
+p.define('MACRO_B', '(x + y / z)', ['x', 'y', 'z'])
+
+# Source or headers can be included
+p.include('/path/to/file.c')
+
+# Multiple files can be included
+# Source can also be supplied in place
+p.include('/path', """
+#ifdef MACRO_A
+#define MACRO_C(x,y,z)  MACRO_B(x,y,z)
+#else
+#define MACRO_C(x,y,z)  (1)
+#endif 
+
+int main()
+{
+    return MACRO_C(1,2,3);
+}
+"""
+)
+
+# once the required source is parsed, expressions can be evaluated
+print(p.evaluate('MACRO_A + MACRO_C(1,2,3)')) # returns 2
+
+# The preprocessed source can then be evaluated
+print(p.source())
+# prints:
+# int main()
+# {
+#     return 1 + 2 / 3;
+# }
+```
+
+
