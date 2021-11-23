@@ -41,7 +41,7 @@ p.include('/path/to/file.c')
 
 # Multiple files can be included
 # Source can also be supplied in place
-p.include('/path', """
+p.include('/dummy/path.c', """
 #ifdef MACRO_A
 #define MACRO_C(x,y,z)  MACRO_B(x,y,z)
 #else
