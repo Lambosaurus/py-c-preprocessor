@@ -113,7 +113,7 @@ class Preprocessor():
 
     # Defines a symbol
     def define(self, token, expr = None, args = None):
-        self.macros[token] = Macro(token, expr, args)
+        self.macros[token] = Macro(token, str(expr), args)
     
     # Undefines a symbol
     def undefine(self, token):
