@@ -55,10 +55,13 @@ int main()
 """
 )
 
-# once the required source is parsed, expressions can be evaluated
+# once the required source is parsed, expressions can be expanded
+print(p.expand('MACRO_A + MACRO_C(1,2,3)')) # returns "1 + (1 + 2 / 3)"
+
+# expressions can also be evaluated if they resolve to to primitive expressions
 print(p.evaluate('MACRO_A + MACRO_C(1,2,3)')) # returns 2
 
-# The preprocessed source can then be evaluated
+# The preprocessed source can then be expanded
 print(p.source())
 # prints:
 # int main()
