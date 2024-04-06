@@ -59,6 +59,20 @@ def test_conditional_directives():
     p.include("source.c",src)
     test_assert(p.evaluate("MACRO_A"), 3)
 
+# Tests for checking that #directives with spaces still work
+def test_spaced_directives():
+    p = Preprocessor()
+    src = """
+    #define SYMBOL_A 1
+    # define SYMBOL_B 2
+    #        define SYMBOL_C 3
+    #define         SYMBOL_D 4
+    #define SYMBOL_E         5
+    """
+    p.include("source.c", src)
+    # Just check that all symbols got defined, and can be resovled.
+    test_assert(p.expand("SYMBOL_A,SYMBOL_B,SYMBOL_C,SYMBOL_D,SYMBOL_E"), "1,2,3,4,5")
+
 # Tests for including a file
 def test_include():
     p = Preprocessor()
@@ -197,6 +211,7 @@ def test_include_source():
 def run_tests():
     test_macro_evaluation()
     test_conditional_directives()
+    test_spaced_directives()
     test_include()
     test_string_embedded_macros()
     test_nested_macros()

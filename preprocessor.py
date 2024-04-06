@@ -61,23 +61,23 @@ class Preprocessor():
         
         self._directives = [
             # Conditional tokens
-            Directive(r"#if\s+(.*)", self._directive_if, True),
-            Directive(r"#ifdef\s+(\w+)", self._directive_ifdef, True),
-            Directive(r"#ifndef\s+(\w+)", self._directive_ifndef, True),
-            Directive(r"#elif\s+(.*)", self._directive_elif, True),
-            Directive(r"#endif", self._directive_endif, True),
-            Directive(r"#else", self._directive_else, True),
+            Directive(r"#\s*if\s+(.*)", self._directive_if, True),
+            Directive(r"#\s*ifdef\s+(\w+)", self._directive_ifdef, True),
+            Directive(r"#\s*ifndef\s+(\w+)", self._directive_ifndef, True),
+            Directive(r"#\s*elif\s+(.*)", self._directive_elif, True),
+            Directive(r"#\s*endif", self._directive_endif, True),
+            Directive(r"#\s*else", self._directive_else, True),
 
             # Standalone tokens
-            Directive(r"#pragma\s+(.*)", self._directive_pragma),
-            Directive(r"#error\s+(.*)", self._directive_error),
-            Directive(r"#include\s*\"([^\"]*)\"", self._directive_include),
-            Directive(r"#include\s*<([^>]*)>", self._directive_include),
-            Directive(r"#undef\s+(\w+)", self._directive_undef),
+            Directive(r"#\s*pragma\s+(.*)", self._directive_pragma),
+            Directive(r"#\s*error\s+(.*)", self._directive_error),
+            Directive(r"#\s*include\s*\"([^\"]*)\"", self._directive_include),
+            Directive(r"#\s*include\s*<([^>]*)>", self._directive_include),
+            Directive(r"#\s*undef\s+(\w+)", self._directive_undef),
             
             # Define statements. Order is important.
-            Directive(r"#define\s+(\w+)\(([^\)]*)\)\s*(.*)?", self._directive_define_varidic),
-            Directive(r"#define\s+(\w+)\s*(.*)?", self._directive_define),
+            Directive(r"#\s*define\s+(\w+)\(([^\)]*)\)\s*(.*)?", self._directive_define_varidic),
+            Directive(r"#\s*define\s+(\w+)\s*(.*)?", self._directive_define),
         ]
 
         self._content_enabled = IF_STATE_NOW
