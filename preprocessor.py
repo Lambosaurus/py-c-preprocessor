@@ -435,10 +435,8 @@ class Preprocessor():
     
     # Expands all macros in the given expression
     # May return a remainder string if the expression is not fully expanded
-    def _expand_macros(self, expr, recurse_depth = 0):
-        if recurse_depth > self.max_macro_expansion_depth:
-            raise Exception("Max macro expansion depth exceeded")
-
+    def _expand_macros(self, expr):
+        expansion_depth = 0
         # expand macros
         start = 0
         while True:
@@ -450,6 +448,11 @@ class Preprocessor():
             token = expr[start:end]
 
             if token in self.macros:
+
+                # check we arent caught in a loop
+                if expansion_depth > self.max_macro_expansion_depth:
+                    raise Exception("Max macro expansion depth exceeded")
+
                 # expand the macro
                 macro = self.macros[token]
                 if macro.args != None:
@@ -475,12 +478,12 @@ class Preprocessor():
                 else:
                     # expand the macro without arguments
                     macro_expr = macro.expand()
-                
-                # recusively expand the macro
-                macro_expr, _ = self._expand_macros(macro_expr, recurse_depth + 1)
-                # replace the macro with the expanded expression
+
+                # we have our new string
                 expr = expr[:start] + macro_expr + expr[end:]
-                start += len(macro_expr)
+
+                # do not increase the start point - we should recheck this for new tokens to be expanded.
+                expansion_depth += 1
             else:
                 # proceed over the token
                 start = end
@@ -549,7 +552,6 @@ class Preprocessor():
     # returns true if the current #if block is enabled
     def _flow_enabled(self):
         return self._content_enabled == IF_STATE_NOW
-
 
 
 

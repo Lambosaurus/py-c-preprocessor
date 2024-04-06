@@ -31,6 +31,19 @@ def test_macro_evaluation():
     test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
     test_assert(p.evaluate("MACRO_D(512 + MACRO_CONST)"), 1)
 
+# Tests that a recursive macro does not block execution
+def test_recursive_macro():
+    p = Preprocessor()
+
+    p.define("MACRO_A", "MACRO_B")
+    p.define("MACRO_B", "MACRO_A")
+
+    try:
+        p.evaluate("MACRO_A")
+        test_assert("The expression above should fail.", None)
+    except:
+        pass
+
 
 # Tests for conditional directives
 def test_conditional_directives():
@@ -112,6 +125,7 @@ def test_nested_macros():
     p.define("MACRO_CONST", "0x1")
     p.define("MACRO_A", "(a + b)", ["a","b"])
     p.define("MACRO_B", "(a + 1)", ["a"])
+    p.define("MACRO_C", "MACRO_B")
 
     # check for nested macros
     test_assert(p.evaluate("MACRO_A(1,MACRO_B(2))"), 4)
@@ -127,6 +141,9 @@ def test_nested_macros():
 
     # check a heavily nested macro
     test_assert(p.evaluate("MACRO_A(1, MACRO_B(MACRO_A(3,MACRO_B(1))))"), 7)
+
+    # A non arg macro that expands into an argument macro
+    test_assert(p.evaluate("MACRO_C(1)"), 2)
 
 
 # Test that source is correctly expanded
@@ -210,6 +227,7 @@ def test_include_source():
 # Run all the tests
 def run_tests():
     test_macro_evaluation()
+    test_recursive_macro()
     test_conditional_directives()
     test_spaced_directives()
     test_include()
