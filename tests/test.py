@@ -31,6 +31,16 @@ def test_macro_evaluation():
     test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
     test_assert(p.evaluate("MACRO_D(512 + MACRO_CONST)"), 1)
 
+    # a few more tests to check evaulation
+    test_assert(p.evaluate("3 - 4"), -1)
+    test_assert(p.evaluate("3 == 5"), False)
+    test_assert(p.evaluate("3 != 5"), True)
+    test_assert(p.evaluate("!(1)"), False)
+
+    test_assert(p.evaluate("defined(MACRO_Z)"), False)
+    test_assert(p.evaluate("defined(MACRO_A)"), True)
+
+
 # Tests that a recursive macro does not block execution
 def test_recursive_macro():
     p = Preprocessor()
