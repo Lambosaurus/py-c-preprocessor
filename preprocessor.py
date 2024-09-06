@@ -505,7 +505,7 @@ class Preprocessor():
         expr = expr.replace("&&", " and ")
         expr = expr.replace("||", " or ")
         expr = expr.replace("/", "//")
-        re.sub(r"!([^?==])", r" not \1", expr)
+        expr = re.sub(r"!([^?==])", r" not \1", expr)
         
         result = eval(expr)
         return result
