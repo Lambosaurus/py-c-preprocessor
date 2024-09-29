@@ -116,7 +116,7 @@ def test_va_args():
 def test_struct_fields_dereference_with_same_name():
     p = Preprocessor()
     p.define('test', 1)
-    test_assert(p.expand("test->a, struc->test, test"), "test->a, struc->test, 1")
+    test_assert(p.expand("test->a, struc->test, test, (test)->a"), "test->a, struc->test, 1, (1)->a")
 
 # tests that macros with embedded in strings are correctly handled
 def test_string_embedded_macros():
