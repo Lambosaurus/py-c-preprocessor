@@ -106,7 +106,17 @@ def test_include():
     test_assert(p.evaluate("MACRO_B(1)"),   2)
     test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
     test_assert(p.evaluate("MACRO_D(513)"), 1)
+    
+# Tests for variadic parameters in macros
+def test_va_args():
+    p = Preprocessor()
+    p.define("MACRO_VA_ARG_IDENTITY", "__VA_ARGS__", ["..."])
+    test_assert(p.expand('MACRO_VA_ARG_IDENTITY(1, 2 3, "abc")'), '1, 2 3, "abc"')
 
+def test_struct_fields_dereference_with_same_name():
+    p = Preprocessor()
+    p.define('test', 1)
+    test_assert(p.expand("test->a, struc->test, test"), "test->a, struc->test, 1")
 
 # tests that macros with embedded in strings are correctly handled
 def test_string_embedded_macros():
@@ -241,7 +251,9 @@ def run_tests():
     test_conditional_directives()
     test_spaced_directives()
     test_include()
+    test_va_args()
     test_string_embedded_macros()
+    test_struct_fields_dereference_with_same_name()
     test_nested_macros()
     test_source_expansion()
     test_usb_class_msc()

@@ -1,4 +1,3 @@
-
 import re
 import os.path
 import io
@@ -7,7 +6,8 @@ IF_STATE_NOW  = 0
 IF_STATE_SEEK = 1
 IF_STATE_SKIP = 2
 
-TOKEN_SEARCH_REGEX = re.compile(r"(\w+)")
+TOKEN_SEARCH_REGEX = re.compile(r"(\b(?<!(?:>|\.))\w+(?!->|\.)\b)") # to avoid matching struct-like fields
+                                                                    # or variables dereference with the same name as defined macro
 PAREN_SEARCH_REGEX = re.compile(r"\s*\(")
 
 class Directive():
@@ -46,7 +46,16 @@ class Macro():
     # This must be done in a single pass, so that nested tokens are left in place
     def _substitute_args(self, expr, args):
         # Create a map between the argument name and the value
-        tokens = { self.args[i]: args[i] for i in range(len(args)) }
+        tokens = { self.args[i]: args[i] for i in range(len(self.args)) if not self.args[i] == '...'}
+        if '...' in self.args:
+            if self.args.count('...') > 1:
+                raise ValueError('There can be only one variadic parameter.')
+            
+            if not '...' == self.args[-1]:
+                raise ValueError('Variadic parameter should be the last in the list.')
+            
+            tokens.update({'__VA_ARGS__': ', '.join(args)})
+        
         def _substitute_token(match):
             token = match.groups()[0]
             if token in tokens:
@@ -97,6 +106,8 @@ class Preprocessor():
         self.source_lines = []
         self.max_macro_expansion_depth = 4096
 
+        self._ignored_definitions = []
+
     #
     #      PUBLIC INTERFACE
     #
@@ -110,6 +121,9 @@ class Preprocessor():
     # returns the output source file as a string
     def source(self):
         return "".join(self.source_lines)
+    
+    def ignore_macro_definitions(self, *defs):
+        self._ignored_definitions.extend(defs)
 
     # Defines a symbol
     def define(self, token, expr = None, args = None):
@@ -280,7 +294,8 @@ class Preprocessor():
 
     # Rule to handle: #define <token> [<expression>]
     def _directive_define(self, args):
-        self.define(args[0], args[1])
+        if not args[0] in self._ignored_definitions:
+            self.define(args[0], args[1])
 
     # Rule to handle: #define <token>(<any>) [<expression>]
     def _directive_define_varidic(self, args):
@@ -451,7 +466,7 @@ class Preprocessor():
 
                 # check we arent caught in a loop
                 if expansion_depth > self.max_macro_expansion_depth:
-                    raise Exception("Max macro expansion depth exceeded")
+                    raise Exception(f"Max macro expansion depth exceeded (in expression \"{expr.strip().rstrip()}\")")
 
                 # expand the macro
                 macro = self.macros[token]
@@ -460,7 +475,7 @@ class Preprocessor():
                     # find the arguments
                     arg_start, arg_end = self._find_arguments(expr, end)
                     if arg_start == None:
-                        raise Exception("Macro {0} expects arguments".format(token))
+                        raise Exception("Macro \"{0}\" expects arguments (in expression \"{1}\")".format(token, expr.strip().rstrip()))
                     elif arg_end == None:
                         # We have an unterminated argument list.
                         # this line will have to be glued to the next line.
@@ -469,8 +484,9 @@ class Preprocessor():
                     # separate the arguments
                     args = self._split_args(expr[arg_start+1:arg_end-1])
 
-                    if len(args) != len(macro.args):
-                        raise Exception("Macro {0} requires {1} arguments".format(token, len(macro.args)))
+                    # support variadics
+                    if len(args) != len(macro.args) and not '...' in macro.args:
+                        raise Exception("Macro \"{0}\" requires {1} arguments (in expression \"{2}\")".format(token, len(macro.args), expr.strip().rstrip()))
                     
                     # replace the macro with the expanded expression
                     macro_expr = macro.expand(args)
@@ -552,6 +568,3 @@ class Preprocessor():
     # returns true if the current #if block is enabled
     def _flow_enabled(self):
         return self._content_enabled == IF_STATE_NOW
-
-
-
