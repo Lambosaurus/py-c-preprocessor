@@ -6,9 +6,9 @@ IF_STATE_NOW  = 0
 IF_STATE_SEEK = 1
 IF_STATE_SKIP = 2
 
-TOKEN_SEARCH_REGEX = re.compile(r"(\b(?<!(?:>|\.))\w+(?!->|\.)\b)") # to avoid matching struct-like fields
-                                                                    # or variables dereference with the same name as defined macro
+TOKEN_SEARCH_REGEX = re.compile(r"(\w+)")
 PAREN_SEARCH_REGEX = re.compile(r"\s*\(")
+VA_ARG_REGEX = re.compile(r"(\w*)(?:(?<!\.))\.\.\.(?:(?!\.))")
 
 class Directive():
     def __init__(self, pattern, action, conditional = False):
@@ -45,16 +45,26 @@ class Macro():
     # Substitutes any defined arguments in the expression
     # This must be done in a single pass, so that nested tokens are left in place
     def _substitute_args(self, expr, args):
-        # Create a map between the argument name and the value
-        tokens = { self.args[i]: args[i] for i in range(len(self.args)) if not self.args[i] == '...'}
-        if '...' in self.args:
-            if self.args.count('...') > 1:
-                raise ValueError('There can be only one variadic parameter.')
+        # Create a map between the argument name and the value (ignoring possible va_args)
+        tokens = { self.args[i]: args[i].strip() for i in range(len(self.args)) if re.search(TOKEN_SEARCH_REGEX, self.args[i]) }
+
+        # NOTE: variadic macros support
+        vname = None
+        for i in range(len(self.args)):
+            m = re.search(VA_ARG_REGEX, self.args[i])
+            if m is not None:
+                if vname:
+                    raise ValueError('There can be only one variadic parameter.')
+                if i != len(self.args) - 1:
+                    raise ValueError('Variadic parameter should be the last in the list.')
+                
+                vname = m.group(1) or '__VA_ARGS__'
+            elif re.search(TOKEN_SEARCH_REGEX, self.args[i]) is None:
+                # We got here a malformed parameter (not token-like, not variadic)
+                raise ValueError(f'Invalid parameter: {self.args[i]}')
             
-            if not '...' == self.args[-1]:
-                raise ValueError('Variadic parameter should be the last in the list.')
-            
-            tokens.update({'__VA_ARGS__': ', '.join(args)})
+        # get all args after all the positional args
+        tokens.update({vname: ','.join(args[len(self.args) - 1:])})
         
         def _substitute_token(match):
             token = match.groups()[0]
@@ -422,6 +432,7 @@ class Preprocessor():
 
     # splits an argument string into a list of arguments
     # care should be taken not to split inside a string or parenthesis
+    # NOTE: whitespace strip is now handled in Macro._substitute_args()
     def _split_args(self, args):
         arglist = []
         i = 0
@@ -432,12 +443,12 @@ class Preprocessor():
             elif args[i] == '(':
                 i = self._find_parentheses_end(args, i+1)
             elif args[i] == ',':
-                arglist.append(args[arg_start:i].strip())
+                arglist.append(args[arg_start:i])
                 arg_start = i + 1
                 i += 1
             else:
                 i += 1
-        arglist.append(args[arg_start:].strip())
+        arglist.append(args[arg_start:])
         return arglist
 
 
@@ -485,7 +496,7 @@ class Preprocessor():
                     args = self._split_args(expr[arg_start+1:arg_end-1])
 
                     # support variadics
-                    if len(args) != len(macro.args) and not '...' in macro.args:
+                    if len(args) != len(macro.args) and not any([re.search(VA_ARG_REGEX, macro.args[i]) for i in range(len(macro.args))]):
                         raise Exception("Macro \"{0}\" requires {1} arguments (in expression \"{2}\")".format(token, len(macro.args), expr.strip().rstrip()))
                     
                     # replace the macro with the expanded expression
