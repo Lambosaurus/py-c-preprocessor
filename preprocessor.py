@@ -116,8 +116,6 @@ class Preprocessor():
         self.source_lines = []
         self.max_macro_expansion_depth = 4096
 
-        self._ignored_definitions = []
-
     #
     #      PUBLIC INTERFACE
     #
@@ -131,9 +129,6 @@ class Preprocessor():
     # returns the output source file as a string
     def source(self):
         return "".join(self.source_lines)
-    
-    def ignore_macro_definitions(self, *defs):
-        self._ignored_definitions.extend(defs)
 
     # Defines a symbol
     def define(self, token, expr = None, args = None):
@@ -304,8 +299,7 @@ class Preprocessor():
 
     # Rule to handle: #define <token> [<expression>]
     def _directive_define(self, args):
-        if not args[0] in self._ignored_definitions:
-            self.define(args[0], args[1])
+        self.define(args[0], args[1])
 
     # Rule to handle: #define <token>(<any>) [<expression>]
     def _directive_define_varidic(self, args):
