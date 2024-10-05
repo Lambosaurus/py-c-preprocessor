@@ -107,6 +107,50 @@ def test_include():
     test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
     test_assert(p.evaluate("MACRO_D(513)"), 1)
 
+def test_whitespace_strip():
+    p = Preprocessor()
+    src = """
+    #define MACRO_SPACED_PARAMS(a,   b, c,d) a b c d
+    #define MACRO_SPACED_ARGS(a, b, c, d) a b c d
+    """
+    p.include("source.c", src)
+
+    test_assert(p.expand("MACRO_SPACED_PARAMS(1, 2, 3, 4)"), "1 2 3 4")
+    test_assert(p.expand("MACRO_SPACED_ARGS(1,   2,3, 4)"), "1 2 3 4")
+    
+# Tests for variadic parameters in macros
+def test_va_args():
+    p = Preprocessor()
+    p.define("MACRO_VA_ARG_IDENTITY", "__VA_ARGS__", ["..."])
+    p.define("MACRO_NAMED_VA_ARG_IDENTITY", "x", ["x..."])
+    p.define("MACRO_VA_ARG_COHERENCE", "a@x", ["a", "x..."])
+    p.define("MACRO_VA_ARG_INVALID", "a@x", ["a...", "x"])
+    p.define("MACRO_VA_ARG_INVALID2", "a@x", ["a...", "x..."])
+    p.define("MACRO_INVALID", "a@x", ["a", "x...."])
+    
+    test_assert(p.expand('MACRO_VA_ARG_IDENTITY(1, 2 3, "abc")'), '1, 2 3, "abc"')
+    test_assert(p.expand('MACRO_NAMED_VA_ARG_IDENTITY(1, 2 3, "abc")'), '1, 2 3, "abc"')
+    # Note that spaces are not .strip()-ped in variadic macros
+    test_assert(p.expand("MACRO_VA_ARG_COHERENCE(contact test,domain.tld, or call +0123456789 for further assistance)"), 
+                "contact test@domain.tld, or call +0123456789 for further assistance")
+    
+    try:
+        p.evaluate("MACRO_VA_ARG_INVALID(a b c, d, e)")
+        test_assert("The expression above should fail.", None)
+    except:
+        pass
+
+    try:
+        p.evaluate("MACRO_VA_ARG_INVALID2(a b c, d, e)")
+        test_assert("The expression above should fail.", None)
+    except:
+        pass
+
+    try:
+        p.evaluate("MACRO_INVALID(a b c, d, e)")
+        test_assert("The expression above should fail.", None)
+    except:
+        pass
 
 # tests that macros with embedded in strings are correctly handled
 def test_string_embedded_macros():
@@ -241,6 +285,8 @@ def run_tests():
     test_conditional_directives()
     test_spaced_directives()
     test_include()
+    test_whitespace_strip()
+    test_va_args()
     test_string_embedded_macros()
     test_nested_macros()
     test_source_expansion()
