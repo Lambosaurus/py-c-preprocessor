@@ -453,6 +453,11 @@ class Preprocessor():
             raise Exception("Unterminated macro in expression")
         return expr
     
+    def _is_empty_token(self, token):
+        # If _split_args could return stripped arguments (ie, it was aware of whether it was parsing varargs or not)
+        # Then this could be replaced with simply (not token)
+        return (not token) or token.isspace()
+
     # Expands all macros in the given expression
     # May return a remainder string if the expression is not fully expanded
     def _expand_macros(self, expr):
@@ -471,7 +476,7 @@ class Preprocessor():
 
                 # check we arent caught in a loop
                 if expansion_depth > self.max_macro_expansion_depth:
-                    raise Exception(f"Max macro expansion depth exceeded (in expression \"{expr.strip().rstrip()}\")")
+                    raise Exception(f"Max macro expansion depth exceeded (in expression \"{expr.strip()}\")")
 
                 # expand the macro
                 macro = self.macros[token]
@@ -480,7 +485,7 @@ class Preprocessor():
                     # find the arguments
                     arg_start, arg_end = self._find_arguments(expr, end)
                     if arg_start == None:
-                        raise Exception("Macro \"{0}\" expects arguments (in expression \"{1}\")".format(token, expr.strip().rstrip()))
+                        raise Exception("Macro \"{0}\" expects arguments (in expression \"{1}\")".format(token, expr.strip()))
                     elif arg_end == None:
                         # We have an unterminated argument list.
                         # this line will have to be glued to the next line.
@@ -489,9 +494,12 @@ class Preprocessor():
                     # separate the arguments
                     args = self._split_args(expr[arg_start+1:arg_end-1])
 
-                    # support variadics
+                    # Handle the case where macro is called with an empty argument list
+                    if len(args) == 1 and len(macro.args) == 0 and self._is_empty_token(args[0]):
+                        args = []
+
                     if len(args) != len(macro.args) and not any([re.search(VA_ARG_REGEX, macro.args[i]) for i in range(len(macro.args))]):
-                        raise Exception("Macro \"{0}\" requires {1} arguments (in expression \"{2}\")".format(token, len(macro.args), expr.strip().rstrip()))
+                        raise Exception("Macro \"{0}\" requires {1} arguments (in expression \"{2}\")".format(token, len(macro.args), expr.strip()))
                     
                     # replace the macro with the expanded expression
                     macro_expr = macro.expand(args)

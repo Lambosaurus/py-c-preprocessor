@@ -22,6 +22,7 @@ def test_macro_evaluation():
     p.define("MACRO_B", "(a + MACRO_CONST)", ["a"])
     p.define("MACRO_C", "(MACRO_A(a, 1) + MACRO_B(b))", ["a", "b"])
     p.define("MACRO_D", "(v & (512 - 1))", "v")
+    p.define("MACRO_E", "23", [])
 
     # test basic macro evaluation works
     test_assert(p.evaluate("(3 + 4) / 2"), 3)
@@ -30,6 +31,7 @@ def test_macro_evaluation():
     test_assert(p.evaluate("MACRO_B(10)"), 11)
     test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
     test_assert(p.evaluate("MACRO_D(512 + MACRO_CONST)"), 1)
+    test_assert(p.evaluate("MACRO_E()"), 23)
 
     # a few more tests to check evaulation
     test_assert(p.evaluate("3 - 4"), -1)
