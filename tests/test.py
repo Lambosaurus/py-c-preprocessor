@@ -33,6 +33,9 @@ def test_macro_evaluation():
     test_assert(p.evaluate("MACRO_D(512 + MACRO_CONST)"), 1)
     test_assert(p.evaluate("MACRO_E()"), 23)
 
+    # Function-like macros should not be expanded if no arguments are provided.
+    test_assert(p.expand("MACRO_E"), "MACRO_E")
+
     # a few more tests to check evaulation
     test_assert(p.evaluate("3 - 4"), -1)
     test_assert(p.evaluate("3 == 5"), False)
