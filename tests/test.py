@@ -45,6 +45,16 @@ def test_macro_evaluation():
     test_assert(p.evaluate("defined(MACRO_Z)"), False)
     test_assert(p.evaluate("defined(MACRO_A)"), True)
 
+# Test empty macros
+def test_empty_macros():
+    p = Preprocessor()
+
+    p.define("MACRO_A")
+    p.define("MACRO_B", args=["a", "b"])
+
+    # Check that the macro expands to an empty string
+    test_assert(p.expand("MACRO_A"), "")
+    test_assert(p.expand("MACRO_B(1,2)"), "")
 
 # Tests that a recursive macro does not block execution
 def test_recursive_macro():
@@ -286,6 +296,7 @@ def test_include_source():
 # Run all the tests
 def run_tests():
     test_macro_evaluation()
+    test_empty_macros()
     test_recursive_macro()
     test_conditional_directives()
     test_spaced_directives()

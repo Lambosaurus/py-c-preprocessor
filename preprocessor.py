@@ -26,9 +26,9 @@ class Directive():
         return False
 
 class Macro():
-    def __init__(self, token, expr = None, args = None):
+    def __init__(self, token, expr, args = None):
         self.token = token
-        self.expr = expr if expr else ""
+        self.expr = expr
         self.args = args
     
     def __repr__(self):
@@ -132,7 +132,7 @@ class Preprocessor():
 
     # Defines a symbol
     def define(self, token, expr = None, args = None):
-        self.macros[token] = Macro(token, str(expr), args)
+        self.macros[token] = Macro(token, str(expr) if expr else "", args)
     
     # Undefines a symbol
     def undefine(self, token):
@@ -508,7 +508,7 @@ class Preprocessor():
                     # expand the macro without arguments
                     macro_expr = macro.expand()
 
-            if macro_expr:
+            if macro_expr != None:
                 # we have our new string
                 expr = expr[:start] + macro_expr + expr[end:]
                 # do not increase the start point - we should recheck this for new tokens to be expanded.
