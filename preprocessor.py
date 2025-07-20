@@ -90,8 +90,7 @@ class Preprocessor():
             # Standalone tokens
             Directive(r"#\s*pragma\s+(.*)", self._directive_pragma),
             Directive(r"#\s*error\s+(.*)", self._directive_error),
-            Directive(r"#\s*include\s*\"([^\"]*)\"", self._directive_include),
-            Directive(r"#\s*include\s*<([^>]*)>", self._directive_include),
+            Directive(r"#\s*include\s+(.*)", self._directive_include),
             Directive(r"#\s*undef\s+(\w+)", self._directive_undef),
             
             # Define statements. Order is important.
@@ -330,9 +329,12 @@ class Preprocessor():
     def _directive_endif(self, args):
         self._flow_exit_if()
 
-    # Rule to handle: #include <file> OR #include "file"
+    # Rule to handle: #include <token>
     def _directive_include(self, args):
-        fname = args[0]
+        token = self.expand(args[0])
+        if len(token) < 2 or (token[0] + token[-1]) not in ['""', '<>']:
+            raise Exception("Invalid include argument")
+        fname = token[1:-1]
         if self.include_rule(fname):
             self.include(fname, may_ignore=self.ignore_missing_includes)
 
