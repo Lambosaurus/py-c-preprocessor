@@ -122,6 +122,19 @@ def test_include():
     test_assert(p.evaluate("MACRO_C(1, 2)"), 5)
     test_assert(p.evaluate("MACRO_D(513)"), 1)
 
+    # Now check that #includes embedded within source are executed.
+    p = Preprocessor()
+    p.add_include_path(SRC_PATH)
+    p.include("dummy.c", ''' #include <test.h> ''')
+    test_assert(p.evaluate("MACRO_D(513)"), 1)
+
+    # Now check that macro expansion works within these #includes.
+    p = Preprocessor()
+    p.add_include_path(SRC_PATH)
+    p.define("FILENAME", '"test.h"')
+    p.include("dummy.c", ''' #include FILENAME ''')
+    test_assert(p.evaluate("MACRO_D(513)"), 1)
+
 def test_whitespace_strip():
     p = Preprocessor()
     src = """
